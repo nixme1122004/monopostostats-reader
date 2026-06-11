@@ -2,7 +2,7 @@
 
 > A personal telemetry dashboard for [Monoposto](https://play.google.com/store/apps/details?id=com.gabama.monopostolite) — the mobile single-seater racing game.
 
-**🔗 Live App → [https://nixme1122004.github.io/monopststats-reader/](https://nixme1122004.github.io/monopststats-reader/)**
+**🔗 Live App → [https://nixme1122004.github.io/monopststats-reader/](https://nixme1122004.github.io/monopostostats-reader/)**
 
 ---
 
