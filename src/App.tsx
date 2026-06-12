@@ -158,7 +158,7 @@ function App() {
         {view === 'setup'  && <SetupCorrelator sessions={sessions} />}
         {view === 'driver' && <DriverComparison sessions={sessions} />}
 
-      </div>
+      </div >
     </div>
   )
 }
