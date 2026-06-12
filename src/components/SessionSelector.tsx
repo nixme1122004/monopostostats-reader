@@ -1,4 +1,5 @@
 import { type Session } from '../lib/db'
+import { TrackThumbnail } from './TrackMap'
 
 interface Props {
   sessions: Session[]
@@ -13,8 +14,11 @@ export default function SessionSelector({ sessions, selectedId, onChange }: Prop
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   )
 
+  const selected = sorted.find(s => s.id === selectedId)
+
   return (
     <div className="flex items-center gap-3 bg-gray-900 rounded-xl px-4 py-3">
+      {selected && <TrackThumbnail track={selected.track} />}
       <span className="text-xs text-gray-400 shrink-0">Viewing session</span>
       <select
         value={selectedId ?? ''}
