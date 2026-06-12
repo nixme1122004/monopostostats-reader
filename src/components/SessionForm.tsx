@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { db, type Session, type CarSetup, type Stint, type Lap } from '../lib/db'
+import { db, type Session, type CarSetup, type Stint, type Lap, calcDownforce, downforceLabel } from '../lib/db'
 
 const TRACKS = [
   'Bahrain', 'Saudi Arabia', 'Australia', 'Japan', 'China',
@@ -10,6 +10,7 @@ const TRACKS = [
 ]
 
 const COMPOUNDS = ['Soft', 'Medium', 'Hard', 'Inter', 'Wet'] as const
+const ENGINE_MODES = ['Standard', 'Performance', 'Qualifying'] as const
 
 const defaultSetup: CarSetup = {
   frontWing: 5,
@@ -17,6 +18,8 @@ const defaultSetup: CarSetup = {
   differential: 75,
   suspensionFront: 5,
   suspensionRear: 5,
+  brakeBalance: 57,
+  engineMode: 'Standard',
 }
 
 const emptyLap = (lapNumber: number): Lap => ({
@@ -32,6 +35,12 @@ const emptyStint = (): Stint => ({
   laps: [emptyLap(1)],
 })
 
+const ENGINE_MODE_COLORS: Record<string, string> = {
+  Standard:    'bg-gray-700 text-gray-200',
+  Performance: 'bg-yellow-600/30 text-yellow-400',
+  Qualifying:  'bg-red-600/30 text-red-400',
+}
+
 export default function SessionForm({ onSaved }: { onSaved: () => void }) {
   const [track, setTrack] = useState(TRACKS[0])
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -40,11 +49,9 @@ export default function SessionForm({ onSaved }: { onSaved: () => void }) {
   const [stints, setStints] = useState<Stint[]>([emptyStint()])
   const [saving, setSaving] = useState(false)
 
-  // --- Setup handlers ---
-  const updateSetup = (key: keyof CarSetup, value: number) =>
+  const updateSetup = (key: keyof CarSetup, value: number | string) =>
     setSetup(prev => ({ ...prev, [key]: value }))
 
-  // --- Stint handlers ---
   const addStint = () => setStints(prev => [...prev, emptyStint()])
 
   const updateCompound = (si: number, compound: Stint['compound']) =>
@@ -62,9 +69,7 @@ export default function SessionForm({ onSaved }: { onSaved: () => void }) {
       if (i !== si) return s
       return {
         ...s,
-        laps: s.laps.map((l, j) =>
-          j === li ? { ...l, [field]: value } : l
-        )
+        laps: s.laps.map((l, j) => j === li ? { ...l, [field]: value } : l)
       }
     }))
 
@@ -74,13 +79,20 @@ export default function SessionForm({ onSaved }: { onSaved: () => void }) {
       return { ...s, laps: s.laps.filter((_, j) => j !== li) }
     }))
 
-  // --- Save ---
   const handleSave = async () => {
     setSaving(true)
     await db.sessions.add({ track, date, weather, carSetup: setup, stints })
     setSaving(false)
     onSaved()
   }
+
+  const downforce = calcDownforce(setup)
+  const dfLabel = downforceLabel(downforce)
+  const dfColor =
+    downforce <= 3 ? 'text-blue-400' :
+    downforce <= 6 ? 'text-green-400' :
+    downforce <= 9 ? 'text-yellow-400' :
+    'text-red-400'
 
   return (
     <div className="space-y-8">
@@ -122,31 +134,78 @@ export default function SessionForm({ onSaved }: { onSaved: () => void }) {
       </section>
 
       {/* Car Setup */}
-      <section className="bg-gray-900 rounded-xl p-6 space-y-4">
-        <h2 className="text-lg font-medium">Car Setup</h2>
+      <section className="bg-gray-900 rounded-xl p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-medium">Car Setup</h2>
+          {/* Downforce display */}
+          <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5">
+            <span className="text-xs text-gray-400">Downforce</span>
+            <span className={`text-sm font-medium ${dfColor}`}>
+              {downforce} — {dfLabel}
+            </span>
+          </div>
+        </div>
+
+        {/* Wing sliders */}
         <div className="grid grid-cols-2 gap-6">
           {([
-            ['frontWing', 'Front Wing', 1, 11],
-            ['rearWing', 'Rear Wing', 1, 11],
-            ['differential', 'Differential', 50, 100],
-            ['suspensionFront', 'Suspension Front', 1, 11],
-            ['suspensionRear', 'Suspension Rear', 1, 11],
+            ['frontWing',       'Front Wing',       1,  11],
+            ['rearWing',        'Rear Wing',         1,  11],
+            ['differential',    'Differential',      50, 100],
+            ['suspensionFront', 'Suspension Front',  1,  11],
+            ['suspensionRear',  'Suspension Rear',   1,  11],
+            ['brakeBalance',    'Brake Balance (%)', 50, 70],
           ] as [keyof CarSetup, string, number, number][]).map(([key, label, min, max]) => (
             <div key={key} className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">{label}</span>
-                <span className="font-medium">{setup[key]}</span>
+                <span className="font-medium">
+                  {setup[key as keyof CarSetup]}
+                  {key === 'brakeBalance' ? '%' : ''}
+                </span>
               </div>
               <input
                 type="range"
                 min={min}
                 max={max}
-                value={setup[key]}
+                value={setup[key as keyof CarSetup] as number}
                 onChange={e => updateSetup(key, Number(e.target.value))}
                 className="w-full accent-red-500"
               />
+              {/* Brake balance visual indicator */}
+              {key === 'brakeBalance' && (
+                <div className="flex justify-between text-xs text-gray-600">
+                  <span>Front {setup.brakeBalance}%</span>
+                  <span>Rear {100 - setup.brakeBalance}%</span>
+                </div>
+              )}
             </div>
           ))}
+        </div>
+
+        {/* Engine Mode */}
+        <div className="space-y-2">
+          <label className="text-sm text-gray-400">Engine Mode</label>
+          <div className="flex gap-2">
+            {ENGINE_MODES.map(mode => (
+              <button
+                key={mode}
+                onClick={() => updateSetup('engineMode', mode)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  setup.engineMode === mode
+                    ? ENGINE_MODE_COLORS[mode]
+                    : 'bg-gray-800 text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-600">
+            {setup.engineMode === 'Standard'    && 'Balanced power and reliability — suitable for full race distance.'}
+            {setup.engineMode === 'Performance' && 'Increased power output — moderate engine wear over a race distance.'}
+            {setup.engineMode === 'Qualifying'  && 'Maximum power — high wear, short stints only.'}
+          </p>
         </div>
       </section>
 
@@ -183,7 +242,6 @@ export default function SessionForm({ onSaved }: { onSaved: () => void }) {
               </div>
             </div>
 
-            {/* Lap rows */}
             <div className="space-y-2">
               <div className="grid grid-cols-5 gap-2 text-xs text-gray-500 px-1">
                 <span>Lap</span>
@@ -239,11 +297,11 @@ export default function SessionForm({ onSaved }: { onSaved: () => void }) {
 
 function compoundColor(c: string) {
   const map: Record<string, string> = {
-    Soft: 'bg-red-600 text-white',
+    Soft:   'bg-red-600 text-white',
     Medium: 'bg-yellow-500 text-black',
-    Hard: 'bg-white text-black',
-    Inter: 'bg-green-600 text-white',
-    Wet: 'bg-blue-600 text-white',
+    Hard:   'bg-white text-black',
+    Inter:  'bg-green-600 text-white',
+    Wet:    'bg-blue-600 text-white',
   }
   return map[c] ?? 'bg-gray-700 text-white'
 }
